@@ -1,0 +1,72 @@
+#!/usr/bin/python3
+
+import socket, select, queue
+from queue import Queue
+
+HOST = '127.0.0.1'
+PORT = 7000
+inputs = []
+outputs = []
+msg_queue = {}
+
+
+def _init_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setblocking(0)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((HOST, PORT))
+    server.listen(5)
+    inputs.append(server)
+
+
+def _add_sock_msg_queue(sock):
+    connection, client_address = sock.accept()
+    connection.setblocking(0)
+    inputs.append(connection)
+    msg_queue[connection] = Queue()
+    
+    
+def _recv_data(sock):
+    data = sock.recvline(2048)
+    if data:
+        msg_queue[sock].put(data)
+
+
+def _update_io_queue(sock):
+    if sock not in outputs:
+        outputs.append(sock)
+    else:
+        if sock in outputs:
+            outputs.remove(sock)
+        inputs.remove(sock)
+        sock.close()
+        del msg_queue[sock]
+
+
+def _send_private_msg(sock):
+    try:
+        next_msg = msg_queue[sock].get_nowait()
+    except:
+        if sock in outputs:
+            outputs.remove(sock)
+    else:
+        sock.send(b"/error\n")
+
+    
+def main():
+    _init_server()
+    while inputs:
+        readable, writable, exceptional = select.select(inputs, outputs, [])
+        for s in readable:
+            if s is inputs[0]:
+                _add_sock_msg_queue(s)
+            else:
+                _recv_data(s)
+                _update_io_queue(s)
+        for s in writable:
+            _send_private_msg(s)
+
+
+if __name__ == '__main__':
+    main()
+
