@@ -2,17 +2,20 @@
 
 import socket, select, queue
 from queue import Queue
+from time import sleep
 
 HOST = '127.0.0.1'
 PORT = 7000
 inputs = []
 outputs = []
+
 msg_queue = {}
 
+readable = []
+writable = []
 
 def _init_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setblocking(0)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((HOST, PORT))
     server.listen(5)
@@ -24,12 +27,33 @@ def _add_sock_msg_queue(sock):
     connection.setblocking(0)
     inputs.append(connection)
     msg_queue[connection] = Queue()
-    
-    
+
+
+def _recv_line(sock):
+    global readable
+    buf = b''
+    _update_socket_status()
+    i = 0
+    while sock in readable:
+        i += 1
+        c = sock.recv(16)
+        buf += c
+        _update_socket_status()
+        # idk why but works
+        sleep(0.01)
+        if buf == b'':
+            break
+    print(buf)
+    return buf
+
+
 def _recv_data(sock):
-    data = sock.recvline(2048)
-    if data:
-        msg_queue[sock].put(data)
+    try:
+        data = _recv_line(sock)
+        if data:
+            msg_queue[sock].put(data)
+    except:
+        pass
 
 
 def _update_io_queue(sock):
@@ -46,17 +70,25 @@ def _update_io_queue(sock):
 def _send_private_msg(sock):
     try:
         next_msg = msg_queue[sock].get_nowait()
-    except:
+    except Exception as e:
         if sock in outputs:
             outputs.remove(sock)
     else:
         sock.send(b"/error\n")
 
-    
+
+def _update_socket_status():
+    global readable
+    global writable
+    readable, writable, exceptional = select.select(inputs, outputs, [], 0.5)
+
+
 def main():
+    global writable
+    global readable
     _init_server()
     while inputs:
-        readable, writable, exceptional = select.select(inputs, outputs, [])
+        _update_socket_status()
         for s in readable:
             if s is inputs[0]:
                 _add_sock_msg_queue(s)

@@ -24,6 +24,7 @@ assert recvline(s) == b'/error\n'
 r,_,_=select.select([s],[],[],0.5)
 assert r==[], 'O servidor não deveria responder enquanto não chegar uma linha inteira'
 
+
 s.send(myrand(200) + b'\n')
 assert recvline(s) == b'/error\n'
 
