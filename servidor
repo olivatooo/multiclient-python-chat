@@ -1,15 +1,19 @@
 #!/usr/bin/python3
 
+# 0 - Queue
+# 1 - Nick
+
 import socket, select, queue
 from queue import Queue
 from time import sleep
+import re
 
 HOST = '127.0.0.1'
 PORT = 7000
 inputs = []
 outputs = []
 
-msg_queue = {}
+user = {}
 
 readable = []
 writable = []
@@ -26,7 +30,7 @@ def _add_sock_msg_queue(sock):
     connection, client_address = sock.accept()
     connection.setblocking(0)
     inputs.append(connection)
-    msg_queue[connection] = Queue()
+    user[connection] = [Queue(), '']
 
 
 def _recv_line(sock):
@@ -40,10 +44,9 @@ def _recv_line(sock):
         buf += c
         _update_socket_status()
         # idk why but works
-        sleep(0.01)
+        # sleep(0.001)
         if buf == b'':
             break
-    print(buf)
     return buf
 
 
@@ -51,9 +54,9 @@ def _recv_data(sock):
     try:
         data = _recv_line(sock)
         if data:
-            msg_queue[sock].put(data)
-    except:
-        pass
+            user[sock][0].put(data)
+    except Exception as e:
+        print(e)
 
 
 def _update_io_queue(sock):
@@ -63,18 +66,82 @@ def _update_io_queue(sock):
         if sock in outputs:
             outputs.remove(sock)
         inputs.remove(sock)
+        nick = user[sock][1]
+        if nick:
+            _send_broadcast_msg(f"/quit {user[sock][1]}\n")
         sock.close()
-        del msg_queue[sock]
+        del user[sock][0]
 
 
-def _send_private_msg(sock):
+def _send_broadcast_msg(msg):
+    for s, o in user.items():
+        try:
+            # Gambiarra pra funcionar com o programa do matias
+            print(msg.encode())
+            _send_private_msg(s, msg.encode())
+        except Exception as e:
+            print(e)
+
+
+def _sanitize_user_input(msg):
+    if ':' in msg:
+        return False
+    return True
+
+
+def _check_nick_available(nick):
+    for s, o in user.items():
+        try:
+            if o[1] == nick:
+                return False
+        except:
+           pass
+    return True
+
+
+def _set_nick(sock, msg):
+    nick = msg.split('/nick')
+    if len(nick) > 2:
+        return False
+    nick = nick[1].strip()
+    if _check_nick_available(nick):
+        if user[sock][1] == '':
+            user[sock][1] = nick
+            _send_broadcast_msg(f"/joined {nick}\n")
+            return True
+        else:
+            sleep(0.5)
+            _send_broadcast_msg(f"/renamed {user[sock][1]} {nick}\n")
+            user[sock][1] = nick
+            return True
+    return False
+
+
+def _handle_msg(sock, msg):
+    if _sanitize_user_input(msg):
+        if '/nick' in msg:
+            return _set_nick(sock, msg)
+        if user[sock][1] == '':
+            return False
+        _send_broadcast_msg(f"{user[sock][1]}: {msg}")
+        return True
+    return False
+
+
+def _send_private_msg(sock, msg):
+    sock.send(msg)
+
+
+def _send_msg(sock):
     try:
-        next_msg = msg_queue[sock].get_nowait()
-    except Exception as e:
+        msg = user[sock][0].get_nowait()
+        msg = msg.decode()
+    except:
         if sock in outputs:
             outputs.remove(sock)
     else:
-        sock.send(b"/error\n")
+        if not _handle_msg(sock, msg):
+            _send_private_msg(sock, b"/error\n")
 
 
 def _update_socket_status():
@@ -96,7 +163,7 @@ def main():
                 _recv_data(s)
                 _update_io_queue(s)
         for s in writable:
-            _send_private_msg(s)
+            _send_msg(s)
 
 
 if __name__ == '__main__':

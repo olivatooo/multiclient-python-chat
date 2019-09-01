@@ -19,6 +19,7 @@ def main():
     for i, weight in enumerate(tests_weight):
         testno = i + 1
         pid = os.spawnlp(os.P_NOWAIT, './servidor', './servidor')
+        time.sleep(0.5)
         print('\nServidor executando no pid=%d' % pid)
         time.sleep(.5)
 
