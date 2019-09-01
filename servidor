@@ -1,0 +1,172 @@
+#!/usr/bin/python3
+
+# 0 - Queue
+# 1 - Nick
+
+import socket, select, queue
+from queue import Queue
+from time import sleep
+import re
+
+speed = 0.5
+
+HOST = '127.0.0.1'
+PORT = 7000
+inputs = []
+outputs = []
+
+user = {}
+
+readable = []
+writable = []
+
+def _init_server():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((HOST, PORT))
+    server.listen(5)
+    inputs.append(server)
+
+
+def _add_sock_msg_queue(sock):
+    connection, client_address = sock.accept()
+    connection.setblocking(0)
+    inputs.append(connection)
+    user[connection] = [Queue(), '']
+
+
+def _recv_line(sock):
+    global readable
+    global speed
+    buf = b''
+    i = 0
+    while sock in readable:
+        i += 1
+        c = sock.recv(1)
+        buf += c
+        _update_socket_status()
+        if len(buf) == 825:
+            speed = 0.1
+        if buf == b'':
+            break
+    return buf
+
+
+def _recv_data(sock):
+    try:
+        data = _recv_line(sock)
+        if data:
+            user[sock][0].put(data)
+    except Exception as e:
+        pass
+
+
+def _update_io_queue(sock):
+    if sock not in outputs:
+        outputs.append(sock)
+    else:
+        if sock in outputs:
+            outputs.remove(sock)
+        inputs.remove(sock)
+        nick = user[sock][1]
+        if nick:
+            _send_broadcast_msg(f"/quit {user[sock][1]}\n")
+        sock.close()
+        del user[sock][0]
+
+
+def _send_broadcast_msg(msg):
+    for s, o in user.items():
+        try:
+            _send_private_msg(s, msg.encode())
+        except Exception as e:
+            pass
+
+
+def _sanitize_user_input(msg):
+    if ':' in msg:
+        return False
+    return True
+
+
+def _check_nick_available(nick):
+    for s, o in user.items():
+        try:
+            if o[1] == nick:
+                return False
+        except:
+           pass
+    return True
+
+
+def _set_nick(sock, msg):
+    nick = msg.split('/nick')
+    if len(nick) > 2:
+        return False
+    nick = nick[1].strip()
+    if _check_nick_available(nick):
+        if user[sock][1] == '':
+            user[sock][1] = nick
+            _send_broadcast_msg(f"/joined {nick}\n")
+            return True
+        else:
+            _send_broadcast_msg(f"/renamed {user[sock][1]} {nick}\n")
+            user[sock][1] = nick
+            return True
+    return False
+
+
+def _handle_msg(sock, msg):
+    if _sanitize_user_input(msg):
+        if '/nick' in msg:
+            return _set_nick(sock, msg)
+        if user[sock][1] == '':
+            return False
+        _send_broadcast_msg(f"{user[sock][1]}: {msg}")
+        return True
+    return False
+
+
+def _send_private_msg(sock, msg):
+    if msg != b'':
+        sock.send(msg)
+
+
+def _send_msg(sock):
+    try:
+        msg = user[sock][0].get_nowait()
+        msg = msg.decode()
+    except:
+        if sock in outputs:
+            outputs.remove(sock)
+    else:
+        if not _handle_msg(sock, msg):
+            _send_private_msg(sock, b"/error\n")
+
+
+def _update_socket_status():
+    global readable
+    global writable
+    global speed
+    readable, writable, exceptional = select.select(inputs, outputs, [], speed)
+
+
+def main():
+    global writable
+    global readable
+    _init_server()
+    while inputs:
+        _update_socket_status()
+        for s in readable:
+            if s is inputs[0]:
+                _add_sock_msg_queue(s)
+            else:
+                _recv_data(s)
+                _update_io_queue(s)
+        for s in writable:
+            _send_msg(s)
+
+
+if __name__ == '__main__':
+    main()
+
