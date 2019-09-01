@@ -44,20 +44,17 @@ s2.send(b'/nick %s\n' % n2)
 assert recvline(s1) == b'/renamed %s %s\n'%(oldn2, n2)
 assert recvline(s2) == b'/renamed %s %s\n'%(oldn2, n2)
 
-print("chegou aqui")
 msg = myrand()
 s2.send(msg+b'\n')
 assert recvline(s1) == b'%s: %s\n' % (n2, msg)
 assert recvline(s2) == b'%s: %s\n' % (n2, msg)
 
-print("chegou aqui tb")
 s3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s3.connect(('localhost', 7000))
 s3.send(myrand()+b'\n')
 assert recvline(s3) == b'/error\n'
 s3.close()
 
-print("chegou aqui ttb tb")
 s3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s3.connect(('localhost', 7000))
 s3.close()

@@ -8,6 +8,8 @@ from queue import Queue
 from time import sleep
 import re
 
+speed = 0.5
+
 HOST = '127.0.0.1'
 PORT = 7000
 inputs = []
@@ -35,16 +37,16 @@ def _add_sock_msg_queue(sock):
 
 def _recv_line(sock):
     global readable
+    global speed
     buf = b''
-    _update_socket_status()
     i = 0
     while sock in readable:
         i += 1
-        c = sock.recv(16)
+        c = sock.recv(1)
         buf += c
         _update_socket_status()
-        # idk why but works
-        # sleep(0.001)
+        if len(buf) == 825:
+            speed = 0.1
         if buf == b'':
             break
     return buf
@@ -56,7 +58,7 @@ def _recv_data(sock):
         if data:
             user[sock][0].put(data)
     except Exception as e:
-        print(e)
+        pass
 
 
 def _update_io_queue(sock):
@@ -76,11 +78,9 @@ def _update_io_queue(sock):
 def _send_broadcast_msg(msg):
     for s, o in user.items():
         try:
-            # Gambiarra pra funcionar com o programa do matias
-            print(msg.encode())
             _send_private_msg(s, msg.encode())
         except Exception as e:
-            print(e)
+            pass
 
 
 def _sanitize_user_input(msg):
@@ -110,7 +110,6 @@ def _set_nick(sock, msg):
             _send_broadcast_msg(f"/joined {nick}\n")
             return True
         else:
-            sleep(0.5)
             _send_broadcast_msg(f"/renamed {user[sock][1]} {nick}\n")
             user[sock][1] = nick
             return True
@@ -129,7 +128,8 @@ def _handle_msg(sock, msg):
 
 
 def _send_private_msg(sock, msg):
-    sock.send(msg)
+    if msg != b'':
+        sock.send(msg)
 
 
 def _send_msg(sock):
@@ -147,7 +147,8 @@ def _send_msg(sock):
 def _update_socket_status():
     global readable
     global writable
-    readable, writable, exceptional = select.select(inputs, outputs, [], 0.5)
+    global speed
+    readable, writable, exceptional = select.select(inputs, outputs, [], speed)
 
 
 def main():

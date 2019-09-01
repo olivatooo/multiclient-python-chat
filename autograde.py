@@ -5,7 +5,6 @@ import json
 import subprocess
 import time
 
-
 def main():
     tests_weight = [1, 1, 2, 3, 2]
     scores = {}
@@ -19,9 +18,8 @@ def main():
     for i, weight in enumerate(tests_weight):
         testno = i + 1
         pid = os.spawnlp(os.P_NOWAIT, './servidor', './servidor')
-        time.sleep(0.5)
         print('\nServidor executando no pid=%d' % pid)
-        time.sleep(.5)
+        time.sleep(0.5)
 
         test = 'test%d' % testno
         scores[test] = 0
